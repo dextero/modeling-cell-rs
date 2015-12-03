@@ -1,4 +1,5 @@
 use std::iter::Iterator;
+use rand::{random, Rand};
 
 pub struct Board<T> {
     fields: Box<[T]>,
@@ -6,12 +7,26 @@ pub struct Board<T> {
     height: usize
 }
 
-impl<T: Copy> Board<T> {
+impl<T: Copy + Rand> Board<T> {
     pub fn new(width: usize,
                height: usize,
                default: T) -> Board<T> {
         Board {
             fields: vec![default; width * height].into_boxed_slice(),
+            width: width,
+            height: height
+        }
+    }
+
+    pub fn new_random(width: usize,
+                      height: usize) -> Board<T> {
+        let mut values = Vec::with_capacity(width * height);
+        for _ in 0..(width * height) {
+            values.push(random());
+        }
+
+        Board {
+            fields: values.into_boxed_slice(),
             width: width,
             height: height
         }
@@ -28,6 +43,13 @@ impl<T: Copy> Board<T> {
                   y: usize) -> &mut T {
         &mut self.fields[y * self.width + x]
     }
+
+    pub fn indices(&self) -> Indices2D {
+        indices_2d(self.width, self.height)
+    }
+
+    pub fn width(&self) -> usize { self.width }
+    pub fn height(&self) -> usize { self.height }
 }
 
 #[test]
@@ -57,20 +79,19 @@ impl Iterator for Indices2D {
     type Item = (usize, usize);
 
     fn next(&mut self) -> Option<(usize, usize)> {
-        assert!(self.y < self.y_end);
+        assert!(self.y <= self.y_end);
 
         let ret = Some((self.x, self.y));
-
-        if self.x == self.x_end {
-            self.x = 0;
-            self.y += 1;
-        } else {
-            self.x += 1;
-        }
 
         if self.y == self.y_end {
             None
         } else {
+            self.x += 1;
+            if self.x == self.x_end {
+                self.x = 0;
+                self.y += 1;
+            }
+
             ret
         }
     }
@@ -86,19 +107,33 @@ pub fn indices_2d(width: usize,
     }
 }
 
-#[test]
-fn test_indices_2d() {
-    let mut board = Board::new(3, 4, false);
-    for (x, y) in indices_2d(board.width, board.height) {
-        println!("x {}, y {}", x, y);
-        *board.at_mut(x, y) = true;
+
+#[cfg(test)]
+fn assert_point_iterables_eq(expected_vals: &[(usize, usize)],
+                             actual_it: &mut Iterator<Item=(usize, usize)>) {
+    let mut num_compared = 0;
+    let mut expected_it = expected_vals.iter();
+
+    while let (Some(actual),
+               Some(&expected)) = (actual_it.next(),
+                                   expected_it.next()) {
+        assert_eq!(expected, actual);
+        num_compared += 1;
     }
 
-    for x in 0..(board.width - 1) {
-        for y in 0..(board.height - 1) {
-            assert_eq!(board.at(x, y), true);
-        }
-    }
+    assert_eq!(expected_vals.len(), num_compared);
+    assert!(actual_it.next().is_none());
+}
+#[test]
+fn test_indices_2d() {
+    let expected = [
+        (0, 0), (1, 0), (2, 0),
+        (0, 1), (1, 1), (2, 1),
+        (0, 2), (1, 2), (2, 2),
+        (0, 3), (1, 3), (2, 3)
+    ];
+
+    assert_point_iterables_eq(&expected, &mut indices_2d(3, 4));
 }
 
 pub struct TorusNeighbors {
@@ -154,23 +189,6 @@ pub fn torus_neighbors(x: usize,
     }
 }
 
-#[cfg(test)]
-fn assert_point_iterables_eq(expected_vals: &[(usize, usize)],
-                             actual_it: &mut Iterator<Item=(usize, usize)>) {
-    let mut num_compared = 0;
-    let mut expected_it = expected_vals.iter();
-
-    while let (Some(actual),
-               Some(&expected)) = (actual_it.next(),
-                                   expected_it.next()) {
-        assert_eq!(expected, actual);
-        num_compared += 1;
-    }
-
-    assert_eq!(expected_vals.len(), num_compared);
-    assert!(actual_it.next().is_none());
-}
-
 #[test]
 fn test_torus_neighbors_basic() {
     let expected_output = [
@@ -221,11 +239,8 @@ fn count_alive_neighbors(board: &Board<bool>,
     nbrs_alive
 }
 
-pub fn advance(old: &Board<bool>,
-               new: &mut Board<bool>) {
-    assert!(old.width == new.width);
-    assert!(old.height == new.height);
-    assert!(old.fields.len() == new.fields.len());
+pub fn advance(old: &Board<bool>) -> Board<bool> {
+    let mut new = Board::new(old.width, old.height, false);
 
     for (x, y) in indices_2d(old.width, old.height) {
         let is_alive = old.at(x, y);
@@ -234,5 +249,6 @@ pub fn advance(old: &Board<bool>,
         *new.at_mut(x, y) = (!is_alive && nbrs_alive == 3)
                          || (is_alive && (nbrs_alive == 2 || nbrs_alive == 3));
     }
-}
 
+    new
+}

@@ -2,3 +2,13 @@
 name = "cell"
 version = "0.1.0"
 authors = ["Marcin Radomski <marcin@mradomski.pl>"]
+
+[[bin]]
+name = "cell"
+
+[dependencies]
+piston = "0.13.0"
+pistoncore-glutin_window = "0.15.0"
+piston2d-graphics = "0.10.0"
+piston2d-opengl_graphics = "0.14.0"
+rand = "0.3"
