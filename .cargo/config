@@ -1,0 +1,9 @@
+[target.x86_64-pc-windows-gnu.freetype]
+rustc-link-search = ["C:\\tools\\msys64\\mingw64\\lib"]
+rustc-link-lib = ["freetype"]
+root = "C:\\tools\\msys64\\mingw64"
+
+[target.x86_64-pc-windows-gnu.z]
+rustc-link-search = ["C:\\tools\\msys2\\mingw64\\lib"]
+rustc-link-lib = ["zlib1"]
+root = "C:\\tools\\msys64\\mingw64"
