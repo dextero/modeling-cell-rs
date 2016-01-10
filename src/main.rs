@@ -5,6 +5,7 @@ extern crate piston;
 extern crate graphics;
 extern crate glutin_window;
 extern crate opengl_graphics;
+extern crate time;
 
 use std::fmt;
 
@@ -16,9 +17,11 @@ use opengl_graphics::{GlGraphics, OpenGL};
 
 mod board;
 mod time_accumulator;
+mod tick_meter;
 
 use board::Board;
 use time_accumulator::TimeAccumulator;
+use tick_meter::TickMeter;
 
 struct App {
     gl: GlGraphics,
@@ -176,12 +179,17 @@ fn main() {
         time_accumulator: TimeAccumulator::new(0.01f64)
     };
 
+    let mut fps_meter = TickMeter::new().with_auto_display("FPS: ");
+    let mut update_meter = TickMeter::new().with_auto_display("Updates/s: ");
+
     for e in window.events() {
         if let Some(render_args) = e.render_args() {
             app.render(&render_args);
+            fps_meter.tick();
         }
         if let Some(update_args) = e.update_args() {
             app.update(&update_args);
+            update_meter.tick();
         }
     }
 }
