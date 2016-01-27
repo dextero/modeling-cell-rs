@@ -8,6 +8,7 @@ extern crate opengl_graphics;
 extern crate time;
 
 use std::fmt;
+use rand::StdRng;
 
 use piston::window::WindowSettings;
 use piston::event_loop::*;
@@ -18,15 +19,32 @@ use opengl_graphics::{GlGraphics, OpenGL};
 mod board;
 mod time_accumulator;
 mod tick_meter;
+mod simulation;
 
-use board::Board;
 use time_accumulator::TimeAccumulator;
 use tick_meter::TickMeter;
+use simulation::{Simulation, Field, GoodEvil, GoodEvilConfig};
 
 struct App {
     gl: GlGraphics,
-    board: Board<bool>,
+    simulation: GoodEvil,
     time_accumulator: TimeAccumulator
+}
+
+fn color_from_field(field: &Field) -> [f32; 4] {
+    const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+    const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
+
+    match *field {
+        Field::Empty => BLACK,
+        Field::Occupied { energy } => {
+            if energy >= 1.0 {
+                WHITE
+            } else {
+                [energy, energy, energy, 1.0]
+            }
+        }
+    }
 }
 
 impl App {
@@ -35,23 +53,17 @@ impl App {
         use graphics::*;
 
         const DARK_BLUE: [f32; 4] = [0.0, 0.0, 0.2, 1.0];
-        const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
-        const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 
+        let board = &self.simulation.board;
         let viewport_rect = args.viewport().rect;
-        let elem_size = [viewport_rect[2] as f64 / self.board.width() as f64,
-                         viewport_rect[3] as f64 / self.board.height() as f64];
-        let board = &self.board;
+        let elem_size = [viewport_rect[2] as f64 / board.width as f64,
+                         viewport_rect[3] as f64 / board.height as f64];
 
         self.gl.draw(args.viewport(), |ctx, gl| {
             clear(DARK_BLUE, gl);
 
             for (x_idx, y_idx) in board.indices() {
-                let color = if board.at(x_idx, y_idx) {
-                    WHITE
-                } else {
-                    BLACK
-                };
+                let color = color_from_field(&board.at(x_idx, y_idx));
 
                 let x = x_idx as f64;
                 let y = y_idx as f64;
@@ -70,7 +82,7 @@ impl App {
     fn update(&mut self,
               args: &UpdateArgs) {
         for _step in self.time_accumulator.update(args.dt) {
-            self.board = board::advance(&self.board);
+            self.simulation.advance();
         };
     }
 }
@@ -172,10 +184,19 @@ fn main() {
             .build()
             .unwrap();
 
+    let sim_cfg = GoodEvilConfig {
+        num_specimens: opts.board_size.0 * opts.board_size.1 / 20,
+        initial_specimen_energy: 1.0f32,
+        energy_loss_per_step: 0.01f32,
+        deadly_energy_margin: 0.0f32
+    };
+    let rng = Box::new(StdRng::new().unwrap());
+
     let mut app = App {
         gl: GlGraphics::new(gl_version),
-        board: Board::new_random(opts.board_size.0,
-                                 opts.board_size.1),
+        simulation: GoodEvil::new(opts.board_size.0,
+                                  opts.board_size.1,
+                                  sim_cfg, rng),
         time_accumulator: TimeAccumulator::new(0.01f64)
     };
 
