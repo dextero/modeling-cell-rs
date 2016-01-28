@@ -37,13 +37,14 @@ fn color_from_field(field: &Field) -> [f32; 4] {
 
     match *field {
         Field::Empty => BLACK,
-        Field::Occupied { energy } => {
-            if energy >= 1.0 {
+        Field::Occupied(s) => {
+            if s.energy >= 1.0 {
                 WHITE
             } else {
-                [energy, energy, energy, 1.0]
+                [s.energy, s.energy, s.energy, 1.0]
             }
-        }
+        },
+        Field::Collision(_) => panic!("should never happen")
     }
 }
 
@@ -61,6 +62,7 @@ impl App {
 
         self.gl.draw(args.viewport(), |ctx, gl| {
             clear(DARK_BLUE, gl);
+            println!("draw");
 
             for (x_idx, y_idx) in board.indices() {
                 let color = color_from_field(&board.at(x_idx, y_idx));
@@ -185,7 +187,7 @@ fn main() {
             .unwrap();
 
     let sim_cfg = GoodEvilConfig {
-        num_specimens: opts.board_size.0 * opts.board_size.1 / 20,
+        num_specimens: 2,
         initial_specimen_energy: 1.0f32,
         energy_loss_per_step: 0.01f32,
         deadly_energy_margin: 0.0f32

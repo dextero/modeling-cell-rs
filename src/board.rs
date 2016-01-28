@@ -14,12 +14,19 @@ impl<T> Board<T> {
         &mut self.fields[y * self.width + x]
     }
 
+    pub fn iter(&self) -> Iter<T> {
+        Iter {
+            board: &self,
+            idx: 0
+        }
+    }
+
     pub fn indices(&self) -> Indices2D {
         indices_2d(self.width, self.height)
     }
 }
 
-impl<T: Copy> Board<T> {
+impl<T: Clone> Board<T> {
     pub fn new(width: usize,
                height: usize,
                default: T) -> Board<T> {
@@ -32,12 +39,12 @@ impl<T: Copy> Board<T> {
 
     pub fn at(&self,
               x: usize,
-              y: usize) -> T {
-        self.fields[y * self.width + x]
+              y: usize) -> &T {
+        &self.fields[y * self.width + x]
     }
 }
 
-impl<T: Copy + Rand> Board<T> {
+impl<T: Clone + Rand> Board<T> {
     pub fn new_random(width: usize,
                       height: usize) -> Board<T> {
         let mut values = Vec::with_capacity(width * height);
@@ -49,6 +56,26 @@ impl<T: Copy + Rand> Board<T> {
             fields: values.into_boxed_slice(),
             width: width,
             height: height
+        }
+    }
+}
+
+pub struct Iter<'a, T> where T: 'a {
+    board: &'a Board<T>,
+    idx: usize
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<&'a T> {
+        let i = self.idx;
+        self.idx += 1;
+
+        if i < self.board.fields.len() {
+            Some(&self.board.fields[i])
+        } else {
+            None
         }
     }
 }
@@ -110,8 +137,8 @@ pub fn indices_2d(width: usize,
 
 
 #[cfg(test)]
-fn assert_point_iterables_eq(expected_vals: &[(usize, usize)],
-                             actual_it: &mut Iterator<Item=(usize, usize)>) {
+pub fn assert_point_iterables_eq(expected_vals: &[(usize, usize)],
+                                 actual_it: &mut Iterator<Item=(usize, usize)>) {
     let mut num_compared = 0;
     let mut expected_it = expected_vals.iter();
 
@@ -125,6 +152,7 @@ fn assert_point_iterables_eq(expected_vals: &[(usize, usize)],
     assert_eq!(expected_vals.len(), num_compared);
     assert!(actual_it.next().is_none());
 }
+
 #[test]
 fn test_indices_2d() {
     let expected = [

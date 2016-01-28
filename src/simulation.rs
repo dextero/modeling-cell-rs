@@ -1,6 +1,9 @@
 use board::Board;
 use rand::{Rng, StdRng};
 use std::cmp::{min, max};
+use std::iter::Iterator;
+use std::collections::HashMap;
+use std::mem;
 
 pub trait Simulation<T> {
     fn advance(&mut self);
@@ -105,7 +108,7 @@ impl GameOfLife {
         let mut nbrs_alive = 0;
 
         for (nbr_x, nbr_y) in torus_neighbors(x, y, board.width, board.height) {
-            if board.at(nbr_x, nbr_y) {
+            if *board.at(nbr_x, nbr_y) {
                 nbrs_alive += 1;
             }
         }
@@ -117,7 +120,7 @@ impl GameOfLife {
         let mut new = Board::new(old.width, old.height, false);
 
         for (x, y) in old.indices() {
-            let is_alive = old.at(x, y);
+            let is_alive = *old.at(x, y);
             let nbrs_alive = GameOfLife::count_alive_neighbors(old, x, y);
 
             *new.at_mut(x, y) = (!is_alive && nbrs_alive == 3)
@@ -135,9 +138,15 @@ impl Simulation<bool> for GameOfLife {
 }
 
 #[derive(Clone, Copy, PartialEq)]
+pub struct Specimen {
+    pub energy: f32
+}
+
+#[derive(Clone, PartialEq)]
 pub enum Field {
     Empty,
-    Occupied { energy: f32 }
+    Occupied(Specimen),
+    Collision(Vec<Specimen>)
 }
 
 pub struct GoodEvilConfig {
@@ -146,6 +155,8 @@ pub struct GoodEvilConfig {
     pub energy_loss_per_step: f32,
     pub deadly_energy_margin: f32
 }
+
+type CollisionMap = HashMap<(usize, usize), Vec<Specimen>>;
 
 pub struct GoodEvil {
     pub cfg: GoodEvilConfig,
@@ -164,7 +175,7 @@ impl GoodEvil {
             let x = rng.gen_range(0, board.width);
             let y = rng.gen_range(0, board.height);
 
-            if board.at(x, y) == Field::Empty {
+            if *board.at(x, y) == Field::Empty {
                 coords = Some((x, y));
                 break
             }
@@ -181,13 +192,15 @@ impl GoodEvil {
                height: usize,
                cfg: GoodEvilConfig,
                mut rng: Box<StdRng>) -> GoodEvil {
+        assert!(width >= 2);
+        assert!(height >= 2);
         assert!(cfg.num_specimens <= width * height);
 
         let mut board = Board::new(width, height, Field::Empty);
 
         for _ in 0..cfg.num_specimens {
             let (x, y) = GoodEvil::find_empty_field(&board, &mut rng);
-            *board.at_mut(x, y) = Field::Occupied { energy: cfg.initial_specimen_energy };
+            *board.at_mut(x, y) = Field::Occupied(Specimen { energy: cfg.initial_specimen_energy });
         }
 
         GoodEvil {
@@ -195,21 +208,6 @@ impl GoodEvil {
             rng: rng,
             collision_energy: 0.0f32,
             board: board
-        }
-    }
-
-    fn handle_collision(source: Field,
-                        target: Field) -> (Field, Field) {
-        match (source, target) {
-            (Field::Occupied { energy: src_energy },
-             Field::Occupied { energy: tgt_energy }) => {
-                let total_energy = src_energy + tgt_energy;
-                let half = total_energy * 0.5f32;
-
-                (Field::Occupied { energy: half },
-                 Field::Occupied { energy: half })
-            }
-            _ => panic!("should never happen")
         }
     }
 
@@ -227,28 +225,23 @@ impl GoodEvil {
          rng.gen_range(min_y, max_y))
     }
 
-    fn move_specimen(&mut self,
-                     src_x: usize,
-                     src_y: usize,
-                     src_energy: f32,
+    fn move_specimen(specimen: Specimen,
                      dst_x: usize,
                      dst_y: usize,
                      new: &mut Board<Field>) {
-        assert!(src_x != dst_x || src_y != dst_y);
+        let target_field: &mut Field = new.at_mut(dst_x, dst_y);
 
-        // make sure we may skip the move in case of a collision
-        assert!(new.at(src_x, src_y) == Field::Empty);
-
-        match new.at(dst_x, dst_y) {
-            Field::Empty => {
-                *new.at_mut(dst_x, dst_y) = Field::Occupied { energy: src_energy }
+        match target_field {
+            &mut Field::Empty => {
+                *target_field = Field::Occupied(specimen);
             },
-            dst_field => {
-                let src = Field::Occupied { energy: src_energy };
-                let (new_src, new_tgt) = GoodEvil::handle_collision(src, dst_field);
-
-                *new.at_mut(src_x, src_y) = new_src;
-                *new.at_mut(dst_x, dst_y) = new_tgt;
+            &mut Field::Occupied(tgt_specimen) => {
+                let specimens = vec!(tgt_specimen, specimen);
+                //println!("collision, create");
+                *target_field = Field::Collision(specimens.clone());
+            },
+            &mut Field::Collision(ref mut specimens) => {
+                specimens.push(specimen);
             }
         }
     }
@@ -258,29 +251,95 @@ impl GoodEvil {
                        y: usize,
                        new: &mut Board<Field>) {
         match self.board.at(x, y) {
-            Field::Empty => (),
-            Field::Occupied { energy } => {
-                let new_energy = energy - self.cfg.energy_loss_per_step;
-
+            &Field::Empty => (),
+            &Field::Occupied(specimen) => {
+                let new_energy = specimen.energy - self.cfg.energy_loss_per_step;
                 let (target_x, target_y) = GoodEvil::get_new_coords(x, y, &new, &mut self.rng);
 
-                if x == target_x && y == target_y {
-                    *new.at_mut(x, y) = Field::Occupied { energy: new_energy }
-                } else if self.board.at(target_x, target_y) != Field::Empty {
-                    // the target field is possibly taken by a specimen that may not be able to
-                    // move; stay in place in that case to avoid further problems
-                    *new.at_mut(x, y) = Field::Occupied { energy: new_energy }
-                } else {
-                    self.move_specimen(x, y, new_energy, target_x, target_y, new);
-                }
+                GoodEvil::move_specimen(specimen, target_x, target_y, new);
+            },
+            &Field::Collision(_) => panic!("should never happen")
+        }
+    }
 
+    fn surrounding_fields(x: usize,
+                          y: usize,
+                          board: &Board<Field>) -> Vec<(usize, usize)> {
+        let mut fields = vec!();
+
+        let min_x = max(0i64, x as i64 - 1) as usize;
+        let max_x = min(x + 2, board.width);
+
+        let min_y = max(0i64, y as i64 - 1) as usize;
+        let max_y = min(y + 2, board.height);
+
+        for x in min_x..max_x {
+            for y in min_y..max_y {
+                fields.push((x, y))
             }
         }
+
+        fields
+    }
+
+    fn assign_neighbors(x: usize,
+                        y: usize,
+                        num_elems: usize,
+                        board: &Board<Field>,
+                        rng: &mut StdRng) -> Vec<(usize, usize)> {
+        let mut fields = GoodEvil::surrounding_fields(x, y, board);
+        assert!(num_elems <= fields.len());
+
+        rng.shuffle(&mut fields[..]); 
+        fields.resize(num_elems, (-1i32 as usize, -1i32 as usize));
+        fields
+    }
+
+    fn resolve_collisions(rng: &mut StdRng,
+                          old: &Board<Field>) -> Board<Field> {
+        let mut new = Board::new(old.width, old.height, Field::Empty);
+
+        for (x, y) in old.indices() {
+            match old.at(x, y) {
+                &Field::Empty => (),
+                &Field::Occupied(ref specimen) => {
+                    GoodEvil::move_specimen(specimen.clone(), x, y, &mut new);
+                },
+                &Field::Collision(ref specimens) => {
+                    let positions = GoodEvil::assign_neighbors(x, y, specimens.len(), &new, rng);
+
+                    *new.at_mut(x, y) = Field::Empty;
+
+                    for ((new_x, new_y), specimen) in positions.into_iter().zip(specimens) {
+                        GoodEvil::move_specimen(specimen.clone(), new_x, new_y, &mut new);
+                    }
+                }
+            }
+        }
+
+        new
+    }
+
+    fn has_collisions(board: &Board<Field>) -> bool {
+        board.iter().any(|f| match f {
+                             &Field::Collision(_) => true,
+                             _ => false
+                         })
+    }
+
+    fn count_specimens(board: &Board<Field>) -> usize {
+        board.iter().fold(0, |sum, f| match f {
+            &Field::Empty => sum,
+            &Field::Occupied(_) => sum + 1,
+            &Field::Collision(ref specimens) => sum + specimens.len()
+        })
     }
 }
 
 impl Simulation<Field> for GoodEvil {
     fn advance(&mut self) {
+        println!("advance");
+
         let mut new = Board::new(self.board.width, self.board.height, Field::Empty);
 
         for (x, y) in self.board.indices() {
@@ -288,5 +347,18 @@ impl Simulation<Field> for GoodEvil {
         }
 
         self.board = new;
+
+        let mut coll_iters = 0;
+        let specimens = GoodEvil::count_specimens(&self.board);
+        while GoodEvil::has_collisions(&self.board) {
+            coll_iters += 1;
+            println!("resolve_collisions, iteration {}, {} specimens",
+                     coll_iters, GoodEvil::count_specimens(&self.board));
+
+            assert!(GoodEvil::count_specimens(&self.board) == specimens);
+            self.board = GoodEvil::resolve_collisions(&mut self.rng, &self.board);
+        }
+
+        //GoodEvil::debug_collisions(&self.board, &self.collisions);
     }
 }
