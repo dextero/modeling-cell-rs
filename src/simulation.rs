@@ -308,8 +308,6 @@ impl GoodEvil {
                 &Field::Collision(ref specimens) => {
                     let positions = GoodEvil::assign_neighbors(x, y, specimens.len(), &new, rng);
 
-                    *new.at_mut(x, y) = Field::Empty;
-
                     for ((new_x, new_y), specimen) in positions.into_iter().zip(specimens) {
                         GoodEvil::move_specimen(specimen.clone(), new_x, new_y, &mut new);
                     }
@@ -334,6 +332,20 @@ impl GoodEvil {
             &Field::Collision(ref specimens) => sum + specimens.len()
         })
     }
+
+    fn debug_board(board: &Board<Field>) {
+        for y in 0..board.height {
+            for x in 0..board.width {
+                let c = match board.at(x, y) {
+                    &Field::Empty => 0,
+                    &Field::Occupied(_) => 1,
+                    &Field::Collision(ref specs) => specs.len()
+                };
+                print!("{} ", c);
+            }
+            println!("");
+        }
+    }
 }
 
 impl Simulation<Field> for GoodEvil {
@@ -350,6 +362,7 @@ impl Simulation<Field> for GoodEvil {
 
         let mut coll_iters = 0;
         let specimens = GoodEvil::count_specimens(&self.board);
+
         while GoodEvil::has_collisions(&self.board) {
             coll_iters += 1;
             println!("resolve_collisions, iteration {}, {} specimens",
