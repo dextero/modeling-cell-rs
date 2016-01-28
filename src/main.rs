@@ -190,7 +190,7 @@ fn main() {
     let sim_cfg = GoodEvilConfig {
         num_specimens: opts.board_size.0 * opts.board_size.1 / 20,
         initial_specimen_energy: 1.0f32,
-        energy_loss_per_step: 0.01f32,
+        energy_loss_per_step: 0.001f32,
         deadly_energy_margin: 0.0f32
     };
     let rng = Box::new(StdRng::new().unwrap());

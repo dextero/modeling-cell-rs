@@ -1,6 +1,6 @@
 use board::Board;
 use rand::{Rng, StdRng};
-use std::cmp::{min, max};
+use std::cmp::{min, max, Ordering};
 use std::iter::Iterator;
 use std::collections::HashMap;
 use std::mem;
@@ -200,7 +200,9 @@ impl GoodEvil {
 
         for _ in 0..cfg.num_specimens {
             let (x, y) = GoodEvil::find_empty_field(&board, &mut rng);
-            *board.at_mut(x, y) = Field::Occupied(Specimen { energy: cfg.initial_specimen_energy });
+            *board.at_mut(x, y) = Field::Occupied(Specimen {
+                                                      energy: cfg.initial_specimen_energy
+                                                  });
         }
 
         GoodEvil {
@@ -255,7 +257,8 @@ impl GoodEvil {
             &Field::Occupied(specimen) => {
                 self.collision_energy += self.cfg.energy_loss_per_step;
                 let new_specimen = Specimen {
-                    energy: specimen.energy - self.cfg.energy_loss_per_step
+                    energy: specimen.energy - self.cfg.energy_loss_per_step,
+                    ..specimen
                 };
 
                 if new_specimen.energy < self.cfg.deadly_energy_margin {
@@ -304,11 +307,44 @@ impl GoodEvil {
         fields
     }
 
-    fn split_energy(specimens: &Vec<Specimen>,
-                    energy_gain: f32) -> Vec<Specimen> {
+    fn split_energy_equally(specimens: &Vec<Specimen>,
+                            available_energy: f32) -> Vec<Specimen> {
+        let part = available_energy / specimens.len() as f32;
+
         specimens.iter()
-                 .map(|s| Specimen { energy: s.energy + energy_gain })
+                 .map(|s| Specimen {
+                         energy: s.energy + part,
+                         ..*s
+                     })
                  .collect()
+    }
+
+    fn split_energy_poor_half(specimens: &Vec<Specimen>,
+                              mut available_energy: f32) -> Vec<Specimen> {
+        let part = available_energy * 2.0f32 / specimens.len() as f32;
+
+        let mut sorted = specimens.clone();
+        sorted.sort_by(|a, b| a.energy.partial_cmp(&b.energy).unwrap_or(Ordering::Equal));
+
+        // TODO: find a way to make it work with map() call instead of this abomination
+        let mut result = Vec::new();
+        for &mut s in sorted.iter_mut() {
+            let gain = if part < available_energy { part } else { available_energy };
+            available_energy -= gain;
+            result.push(Specimen {
+                energy: s.energy + gain,
+                ..s
+            });
+        }
+
+        result
+    }
+
+    fn split_energy(specimens: &Vec<Specimen>,
+                    available_energy: f32) -> Vec<Specimen> {
+        let splitter = GoodEvil::split_energy_poor_half;
+
+        splitter(specimens, available_energy)
     }
 
     fn resolve_collisions(energy_accumulator: f32,
@@ -325,8 +361,9 @@ impl GoodEvil {
                     GoodEvil::move_specimen(specimen.clone(), x, y, &mut new);
                 },
                 &Field::Collision(ref specimens) => {
-                    let positions = GoodEvil::assign_neighbors(x, y, specimens.len(), &new, rng);
-                    let new_specs = GoodEvil::split_energy(specimens, energy_gain);
+                    let new_specs = GoodEvil::split_energy(specimens,
+                                                           specimens.len() as f32 * energy_gain);
+                    let positions = GoodEvil::assign_neighbors(x, y, new_specs.len(), &new, rng);
 
                     for ((new_x, new_y), specimen) in positions.into_iter().zip(new_specs) {
                         GoodEvil::move_specimen(specimen, new_x, new_y, &mut new);
