@@ -253,10 +253,13 @@ impl GoodEvil {
         match self.board.at(x, y) {
             &Field::Empty => (),
             &Field::Occupied(specimen) => {
-                let new_energy = specimen.energy - self.cfg.energy_loss_per_step;
-                let (target_x, target_y) = GoodEvil::get_new_coords(x, y, &new, &mut self.rng);
+                self.collision_energy += self.cfg.energy_loss_per_step;
+                let new_specimen = Specimen {
+                    energy: specimen.energy - self.cfg.energy_loss_per_step
+                };
 
-                GoodEvil::move_specimen(specimen, target_x, target_y, new);
+                let (target_x, target_y) = GoodEvil::get_new_coords(x, y, &new, &mut self.rng);
+                GoodEvil::move_specimen(new_specimen, target_x, target_y, new);
             },
             &Field::Collision(_) => panic!("should never happen")
         }
@@ -295,9 +298,19 @@ impl GoodEvil {
         fields
     }
 
-    fn resolve_collisions(rng: &mut StdRng,
+    fn split_energy(specimens: &Vec<Specimen>,
+                    energy_gain: f32) -> Vec<Specimen> {
+        specimens.iter()
+                 .map(|s| Specimen { energy: s.energy + energy_gain })
+                 .collect()
+    }
+
+    fn resolve_collisions(energy_accumulator: f32,
+                          rng: &mut StdRng,
                           old: &Board<Field>) -> Board<Field> {
         let mut new = Board::new(old.width, old.height, Field::Empty);
+        let collisions_count = GoodEvil::count_collisions(&old);
+        let energy_gain = energy_accumulator / collisions_count as f32;
 
         for (x, y) in old.indices() {
             match old.at(x, y) {
@@ -307,9 +320,10 @@ impl GoodEvil {
                 },
                 &Field::Collision(ref specimens) => {
                     let positions = GoodEvil::assign_neighbors(x, y, specimens.len(), &new, rng);
+                    let new_specs = GoodEvil::split_energy(specimens, energy_gain);
 
-                    for ((new_x, new_y), specimen) in positions.into_iter().zip(specimens) {
-                        GoodEvil::move_specimen(specimen.clone(), new_x, new_y, &mut new);
+                    for ((new_x, new_y), specimen) in positions.into_iter().zip(new_specs) {
+                        GoodEvil::move_specimen(specimen, new_x, new_y, &mut new);
                     }
                 }
             }
@@ -323,6 +337,14 @@ impl GoodEvil {
                              &Field::Collision(_) => true,
                              _ => false
                          })
+    }
+
+    fn count_collisions(board: &Board<Field>) -> usize {
+        board.iter().fold(0,
+            |sum, f| match f {
+                &Field::Collision(ref specimens) => sum + specimens.len(),
+                _ => sum
+            })
     }
 
     fn count_specimens(board: &Board<Field>) -> usize {
@@ -354,6 +376,7 @@ impl Simulation<Field> for GoodEvil {
 
         let mut new = Board::new(self.board.width, self.board.height, Field::Empty);
 
+        self.collision_energy = 0.0f32;
         for (x, y) in self.board.indices() {
             self.update_specimen(x, y, &mut new);
         }
@@ -369,7 +392,7 @@ impl Simulation<Field> for GoodEvil {
                      coll_iters, GoodEvil::count_specimens(&self.board));
 
             assert!(GoodEvil::count_specimens(&self.board) == specimens);
-            self.board = GoodEvil::resolve_collisions(&mut self.rng, &self.board);
+            self.board = GoodEvil::resolve_collisions(self.collision_energy, &mut self.rng, &self.board);
         }
 
         //GoodEvil::debug_collisions(&self.board, &self.collisions);

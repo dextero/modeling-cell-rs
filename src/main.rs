@@ -38,10 +38,12 @@ fn color_from_field(field: &Field) -> [f32; 4] {
     match *field {
         Field::Empty => BLACK,
         Field::Occupied(s) => {
-            if s.energy >= 1.0 {
-                WHITE
-            } else {
-                [s.energy, s.energy, s.energy, 1.0]
+            match s.energy {
+                x if x >= 4.0 => WHITE,
+                x if x >= 3.0 => [1.0, 1.0, x - 3.0, 1.0],
+                x if x >= 2.0 => [1.0, x - 2.0, 0.0, 1.0],
+                x if x >= 1.0 => [2.0 - x, 0.0, x - 1.0, 1.0],
+                x => [0.0, 0.0, x, 1.0]
             }
         },
         Field::Collision(_) => panic!("should never happen")
