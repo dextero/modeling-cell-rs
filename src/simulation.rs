@@ -258,8 +258,14 @@ impl GoodEvil {
                     energy: specimen.energy - self.cfg.energy_loss_per_step
                 };
 
-                let (target_x, target_y) = GoodEvil::get_new_coords(x, y, &new, &mut self.rng);
-                GoodEvil::move_specimen(new_specimen, target_x, target_y, new);
+                if new_specimen.energy < self.cfg.deadly_energy_margin {
+                    println!("specimen died (energy = {} < {}",
+                             new_specimen.energy, self.cfg.deadly_energy_margin);
+                    self.collision_energy += new_specimen.energy;
+                } else {
+                    let (target_x, target_y) = GoodEvil::get_new_coords(x, y, &new, &mut self.rng);
+                    GoodEvil::move_specimen(new_specimen, target_x, target_y, new);
+                }
             },
             &Field::Collision(_) => panic!("should never happen")
         }
@@ -368,15 +374,20 @@ impl GoodEvil {
             println!("");
         }
     }
+
+    fn total_energy(board: &Board<Field>) -> f32 {
+        board.iter().fold(0.0f32, |sum, f| match f {
+            &Field::Empty => sum,
+            &Field::Occupied(ref s) => sum + s.energy,
+            &Field::Collision(ref ss) => sum + ss.iter().fold(0.0f32, |sum, s| sum + s.energy)
+        })
+    }
 }
 
 impl Simulation<Field> for GoodEvil {
     fn advance(&mut self) {
-        println!("advance");
-
         let mut new = Board::new(self.board.width, self.board.height, Field::Empty);
 
-        self.collision_energy = 0.0f32;
         for (x, y) in self.board.indices() {
             self.update_specimen(x, y, &mut new);
         }
@@ -392,9 +403,19 @@ impl Simulation<Field> for GoodEvil {
                      coll_iters, GoodEvil::count_specimens(&self.board));
 
             assert!(GoodEvil::count_specimens(&self.board) == specimens);
+
             self.board = GoodEvil::resolve_collisions(self.collision_energy, &mut self.rng, &self.board);
+            self.collision_energy = 0.0f32;
+
+            let energy = GoodEvil::total_energy(&self.board);
         }
 
+        if specimens == 0 {
+            panic!("all specimens died");
+        }
+
+        let energy = GoodEvil::total_energy(&self.board);
+        println!("total energy = {} (+{} = {})", energy, self.collision_energy, self.collision_energy + energy);
         //GoodEvil::debug_collisions(&self.board, &self.collisions);
     }
 }

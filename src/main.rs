@@ -42,7 +42,7 @@ fn color_from_field(field: &Field) -> [f32; 4] {
                 x if x >= 4.0 => WHITE,
                 x if x >= 3.0 => [1.0, 1.0, x - 3.0, 1.0],
                 x if x >= 2.0 => [1.0, x - 2.0, 0.0, 1.0],
-                x if x >= 1.0 => [2.0 - x, 0.0, x - 1.0, 1.0],
+                x if x >= 1.0 => [x - 1.0, 0.0, 2.0 - x, 1.0],
                 x => [0.0, 0.0, x, 1.0]
             }
         },
@@ -64,7 +64,6 @@ impl App {
 
         self.gl.draw(args.viewport(), |ctx, gl| {
             clear(DARK_BLUE, gl);
-            println!("draw");
 
             for (x_idx, y_idx) in board.indices() {
                 let color = color_from_field(&board.at(x_idx, y_idx));
