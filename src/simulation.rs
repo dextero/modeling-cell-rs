@@ -321,6 +321,22 @@ impl GoodEvil {
                  .collect()
     }
 
+    fn split_energy_equally_with_children(specimens: &Vec<Specimen>,
+                                          available_energy: f32) -> Vec<Specimen> {
+        let mut new = GoodEvil::split_energy_equally(specimens, available_energy);
+        let mut result = Vec::new();
+
+        for s in new.iter_mut() {
+            if s.energy > 1.5 {
+                result.push(Specimen { energy: s.energy / 2.0 });
+                s.energy /= 2.0;
+            }
+        }
+
+        result.extend(new);
+        result
+    }
+
     fn split_energy_poor_half(specimens: &Vec<Specimen>,
                               mut available_energy: f32) -> Vec<Specimen> {
         let part = available_energy * 2.0f32 / specimens.len() as f32;
@@ -342,9 +358,33 @@ impl GoodEvil {
         result
     }
 
+    fn split_energy_strong_takes_all(specimens: &Vec<Specimen>,
+                                     mut available_energy: f32) -> Vec<Specimen> {
+        let mut sorted = specimens.clone();
+        sorted.sort_by(|a, b| a.energy.partial_cmp(&b.energy).unwrap_or(Ordering::Equal));
+
+        if let Some(last) = sorted.last_mut() {
+            *last = Specimen { energy: last.energy + available_energy };
+        }
+
+        sorted
+    }
+
+    fn split_energy_weak_takes_all(specimens: &Vec<Specimen>,
+                                   mut available_energy: f32) -> Vec<Specimen> {
+        let mut sorted = specimens.clone();
+        sorted.sort_by(|a, b| a.energy.partial_cmp(&b.energy).unwrap_or(Ordering::Equal));
+
+        if let Some(first) = sorted.first_mut() {
+            *first = Specimen { energy: first.energy + available_energy };
+        }
+
+        sorted
+    }
+
     fn split_energy(specimens: &Vec<Specimen>,
                     available_energy: f32) -> Vec<Specimen> {
-        let splitter = GoodEvil::split_energy_poor_half;
+        let splitter = GoodEvil::split_energy_weak_takes_all;
 
         splitter(specimens, available_energy)
     }
