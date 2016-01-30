@@ -162,7 +162,8 @@ pub struct GoodEvil {
     pub cfg: GoodEvilConfig,
     rng: Box<StdRng>,
     collision_energy: f32,
-    pub board: Board<Field>
+    pub board: Board<Field>,
+    iteration: usize
 }
 
 impl GoodEvil {
@@ -209,7 +210,8 @@ impl GoodEvil {
             cfg: cfg,
             rng: rng,
             collision_energy: 0.0f32,
-            board: board
+            board: board,
+            iteration: 0
         }
     }
 
@@ -419,6 +421,47 @@ impl GoodEvil {
             &Field::Collision(ref ss) => sum + ss.iter().fold(0.0f32, |sum, s| sum + s.energy)
         })
     }
+
+    fn print_stats(iteration: usize,
+                   board: &Board<Field>) {
+        let mut specimens = Vec::new();
+
+        for field in board.iter() {
+            match field {
+                &Field::Empty => (),
+                &Field::Collision(_) => panic!("should never happen"),
+                &Field::Occupied(specimen) => {
+                    specimens.push(specimen)
+                }
+            }
+        }
+
+        let mut min_energy = specimens[0].energy;
+        let mut max_energy = specimens[0].energy;
+        let mut sum_energy = 0.0f32;
+
+        for s in specimens.iter() {
+            // TODO: check partial_min/max for f32
+            if s.energy < min_energy {
+                min_energy = s.energy;
+            }
+            if s.energy > max_energy {
+                max_energy = s.energy;
+            }
+            sum_energy += s.energy;
+        }
+
+        let avg_energy = sum_energy / specimens.len() as f32;
+        let variance_energy = specimens.iter().fold(0.0f32, |sum, s| {
+                                                        let diff = s.energy - avg_energy;
+                                                        sum + diff * diff
+                                                    }) / avg_energy;
+        let stdev_energy = variance_energy.sqrt();
+
+        println!("iter {} specimens {} min {} avg {} max {} stdev {}",
+                 iteration, specimens.len(),
+                 min_energy, avg_energy, max_energy, stdev_energy);
+    }
 }
 
 impl Simulation<Field> for GoodEvil {
@@ -431,15 +474,15 @@ impl Simulation<Field> for GoodEvil {
 
         self.board = new;
 
-        let mut coll_iters = 0;
+        //let mut coll_iters = 0;
         let specimens = GoodEvil::count_specimens(&self.board);
 
         while GoodEvil::has_collisions(&self.board) {
-            coll_iters += 1;
-            println!("resolve_collisions, iteration {}, {} specimens",
-                     coll_iters, GoodEvil::count_specimens(&self.board));
+            //coll_iters += 1;
+            //println!("resolve_collisions, iteration {}, {} specimens",
+                     //coll_iters, GoodEvil::count_specimens(&self.board));
 
-            assert!(GoodEvil::count_specimens(&self.board) == specimens);
+            assert!(GoodEvil::count_specimens(&self.board) >= specimens);
 
             self.board = GoodEvil::resolve_collisions(self.collision_energy, &mut self.rng, &self.board);
             self.collision_energy = 0.0f32;
@@ -452,7 +495,10 @@ impl Simulation<Field> for GoodEvil {
         }
 
         let energy = GoodEvil::total_energy(&self.board);
-        println!("total energy = {} (+{} = {})", energy, self.collision_energy, self.collision_energy + energy);
+
+        //println!("total energy = {} (+{} = {})", energy, self.collision_energy, self.collision_energy + energy);
+        self.iteration += 1;
+        GoodEvil::print_stats(self.iteration, &self.board);
         //GoodEvil::debug_collisions(&self.board, &self.collisions);
     }
 }
