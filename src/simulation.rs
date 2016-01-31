@@ -382,9 +382,18 @@ impl GoodEvil {
         sorted
     }
 
+    fn split_energy_steal_if_only_two_else_equal(specimens: &Vec<Specimen>,
+                                                 mut available_energy: f32) -> Vec<Specimen> {
+        if specimens.len() == 2 {
+            GoodEvil::split_energy_strong_takes_all(specimens, available_energy)
+        } else {
+            GoodEvil::split_energy_equally(specimens, available_energy)
+        }
+    }
+
     fn split_energy(specimens: &Vec<Specimen>,
                     available_energy: f32) -> Vec<Specimen> {
-        let splitter = GoodEvil::split_energy_weak_takes_all;
+        let splitter = GoodEvil::split_energy_steal_if_only_two_else_equal;
 
         splitter(specimens, available_energy)
     }
